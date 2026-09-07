@@ -74,6 +74,19 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
   않습니다. 제품의 효과는 개인차가 있을 수 있으며, 구매 및 섭취/사용 전 제품 설명서를 확인하시고
   필요시 전문가와 상담하시기 바랍니다."
 
+## 키워드 적합성 (네이버 인플루언서 검색 반영도 핵심 — 절대 규칙)
+- 사용자가 지정한 키워드는 1개든 5개든 예외 없이 전부, 형식적으로 단어만 삽입하는 게 아니라
+  본문에서 실질적인 내용으로 충분히 다룹니다. 네이버 인플루언서는 키워드와 본문 내용의
+  적합도(관련성)를 중요하게 평가하므로, 키워드 하나당 최소 한 문단 이상 분량으로
+  그 키워드에 대한 유의미한 정보·설명·경험을 담아야 합니다.
+- 키워드가 여러 개일 경우, 각 키워드를 서로 다른 관점(사용법, 특징, 효과가 아닌 체감,
+  비교, 활용 팁, 상황별 추천 등)에서 다양하게 다뤄서 단조롭게 반복되지 않도록 합니다.
+  키워드별로 별도의 소제목 섹션을 만들어 다뤄도 좋습니다.
+- 키워드를 문장 앞부분에서만 기계적으로 반복하지 말고, 본문 전체에 자연스럽게 분산시켜
+  녹여냅니다(키워드 스터핑과는 다릅니다 — 아래 스팸 방지 규칙 참고).
+- 키워드 각각이 실제로 본문에 어떻게, 몇 군데서 다뤄졌는지 스스로 점검한 뒤 결과를 냅니다.
+  하나라도 형식적으로만 언급되고 충분히 설명되지 않았다면 그 키워드에 대한 내용을 보강합니다.
+
 ## 스팸/저품질/이용정지 방지 (네이버 검색 및 운영정책 기준)
 - 원본성: 원고나 다른 사이트·기사·보도자료·타 블로그 문장을 그대로 복사하지 않습니다.
   네이버는 동일/유사 문장을 "유사 문서"로 판정해 검색 노출에서 제외하므로, 표현과 문장
@@ -136,7 +149,12 @@ def build_user_prompt(text: str, product: str | None, keywords: str | None, spon
     if product:
         parts.append(f"제품명: {product}")
     if keywords:
-        parts.append(f"핵심 키워드(가능하면 활용): {keywords}")
+        kw_list = [k.strip() for k in keywords.split(",") if k.strip()]
+        parts.append(
+            f"핵심 키워드({len(kw_list)}개, 전부 필수 반영): {', '.join(kw_list)}\n"
+            "위 키워드는 하나도 빠짐없이 각각 최소 한 문단 이상 충분한 내용으로 다뤄주세요. "
+            "단순 언급이 아니라 실질적인 정보/설명을 담아야 합니다."
+        )
     if sponsored:
         parts.append("이 글은 업체로부터 제품을 무상 제공받았거나 원고료를 받은 협찬 콘텐츠입니다. "
                       "협찬/제공 표시 문구를 반드시 눈에 잘 띄게 포함하세요.")
@@ -188,7 +206,7 @@ def _strip_excluded_sections(body: str) -> str:
     return "\n".join(keep)
 
 
-def validate_output(result: str) -> None:
+def validate_output(result: str, keywords: str | None = None) -> None:
     raw_body = result.split(BODY_DELIMITER)[0]
     body = _strip_excluded_sections(raw_body)
     body_len = len(body.replace("\n", ""))
@@ -200,6 +218,14 @@ def validate_output(result: str) -> None:
     reference_section = result.split(BODY_DELIMITER, 1)[-1] if BODY_DELIMITER in result else ""
     if "제목 후보" not in reference_section:
         print("[경고] 제목 후보 20개 섹션이 결과에 없습니다. 확인해주세요.", file=sys.stderr)
+
+    if keywords:
+        for kw in (k.strip() for k in keywords.split(",") if k.strip()):
+            count = raw_body.lower().count(kw.lower())
+            if count == 0:
+                print(f"[경고] 요청한 키워드 '{kw}'가 본문에 전혀 없습니다. 확인해주세요.", file=sys.stderr)
+            elif count == 1:
+                print(f"[경고] 키워드 '{kw}'가 본문에 1번만 언급되어 충분히 다뤄지지 않았을 수 있습니다. 확인해주세요.", file=sys.stderr)
 
     hits = [p for p in FORBIDDEN_PATTERNS if re.search(p, raw_body)]
     if hits:
@@ -241,7 +267,7 @@ def main() -> None:
         sys.exit("원고 내용이 비어 있습니다.")
 
     result = adapt_text(text, args.product, args.keywords, args.sponsored, args.model, args.temperature)
-    validate_output(result)
+    validate_output(result, args.keywords)
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
