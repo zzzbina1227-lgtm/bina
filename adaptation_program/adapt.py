@@ -28,11 +28,14 @@ VARIATION_HINTS = [
     "계절감이나 요즘 분위기와 엮어서 자연스럽게 운을 떼보세요.",
 ]
 
-# 의약품 오인, 질병 치료·완치 단정 등 절대 사용 금지 표현 (사후 검수용 블랙리스트)
+# 의약품 오인, 질병 치료·완치 단정, 식약처가 금지하는 부당광고 표현 (사후 검수용 블랙리스트)
+# 출처: 식품 등의 표시·광고에 관한 법률 및 식약처 건강기능식품 표시광고 공통심의기준상 금지 표현 사례
 FORBIDDEN_PATTERNS = [
     r"완치", r"치료(가|는|를)?\s*됩니다", r"치료돼요", r"치료해줍니다",
     r"낫습니다", r"낫는다", r"나았어요", r"질병.{0,6}(효과|치료)",
-    r"부작용\s*없(습니다|어요)", r"100%\s*(효과|치료)",
+    r"부작용\s*(없|전혀\s*없)(습니다|어요)", r"100\s*%\s*(효과|치료|기능\s*향상)",
+    r"특효", r"당뇨\s*(치료|예방)", r"고혈압\s*(치료|예방)", r"항암\s*효과",
+    r"탈모\s*치료", r"체중\s*감량\s*(보장|100)", r"의사가?\s*추천",
 ]
 
 SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO/GEO 콘텐츠 전략가입니다.
@@ -70,6 +73,24 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
   "본 게시물은 개인적인 사용 경험을 바탕으로 작성되었으며, 특정 질병의 예방·치료 효과를 의미하지
   않습니다. 제품의 효과는 개인차가 있을 수 있으며, 구매 및 섭취/사용 전 제품 설명서를 확인하시고
   필요시 전문가와 상담하시기 바랍니다."
+
+## 스팸/저품질/이용정지 방지 (네이버 검색 및 운영정책 기준)
+- 원본성: 원고나 다른 사이트·기사·보도자료·타 블로그 문장을 그대로 복사하지 않습니다.
+  네이버는 동일/유사 문장을 "유사 문서"로 판정해 검색 노출에서 제외하므로, 표현과 문장
+  구조를 완전히 새로 씁니다.
+- 키워드 스터핑 금지: 같은 키워드나 제품명을 부자연스럽게 반복해서 욱여넣지 않습니다.
+  문맥에 자연스럽게 녹아드는 빈도로만 사용합니다.
+- 낚시성 제목 금지: 제목은 본문 내용과 실제로 일치해야 하며, 본문에 없는 내용을 제목에서
+  과장하지 않습니다.
+- 실시간 이슈/급상승 검색어에 편승하는 무관한 키워드를 억지로 끼워 넣지 않습니다.
+- 전화번호, 카카오톡 아이디, 외부 링크, 구매처 안내를 문단마다 반복하는 등 과도하게
+  상업적으로 도배하지 않습니다. 자연스러운 정보 제공이 우선입니다.
+- 성인물, 도박, 불법 정보 등 관련 법령이 금지하는 내용은 어떤 경우에도 포함하지 않습니다.
+- 협찬/제공 관련 표시(공정거래위원회 "추천·보증 등에 관한 표시·광고 심사지침" 기준):
+  제품을 무상 제공받았거나 원고료 등 경제적 대가를 받은 경우, 이를 숨기거나 본문 맨 아래
+  작은 글씨로만 넣지 않고, 독자가 쉽게 알아볼 수 있는 위치(본문 도입부 또는 목차 바로 다음)에
+  "이 글은 업체로부터 제품을 제공받아 직접 사용해보고 작성했습니다" 같은 명확한 국문 문구로
+  표시합니다. 사용자가 협찬/제공 여부를 알려주지 않으면 이 문구는 넣지 않습니다.
 
 ## 구조 및 포맷 (네이버 모바일 최적화)
 - 전체 출력은 두 부분으로 나눕니다: (1) 그대로 복사해서 게시할 수 있는 "본문",
@@ -110,18 +131,23 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
 - 결과물은 바로 게시 가능한 완성도로 작성하고, 위 형식과 순서를 반드시 지킵니다."""
 
 
-def build_user_prompt(text: str, product: str | None, keywords: str | None, hint: str) -> str:
+def build_user_prompt(text: str, product: str | None, keywords: str | None, sponsored: bool, hint: str) -> str:
     parts = [f"--- 참고 원고/예시글 ---\n{text}\n--- 참고 원고 끝 ---"]
     if product:
         parts.append(f"제품명: {product}")
     if keywords:
         parts.append(f"핵심 키워드(가능하면 활용): {keywords}")
+    if sponsored:
+        parts.append("이 글은 업체로부터 제품을 무상 제공받았거나 원고료를 받은 협찬 콘텐츠입니다. "
+                      "협찬/제공 표시 문구를 반드시 눈에 잘 띄게 포함하세요.")
     parts.append(f"이번 글은 다음 방식으로 시작해보세요: {hint}")
     parts.append("위 내용을 참고해서 완전히 새롭고 독창적인 네이버 블로그 글로 각색해주세요.")
     return "\n\n".join(parts)
 
 
-def adapt_text(text: str, product: str | None, keywords: str | None, model: str, temperature: float) -> str:
+def adapt_text(
+    text: str, product: str | None, keywords: str | None, sponsored: bool, model: str, temperature: float
+) -> str:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         sys.exit(
@@ -136,7 +162,7 @@ def adapt_text(text: str, product: str | None, keywords: str | None, model: str,
         max_tokens=4096,
         temperature=temperature,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": build_user_prompt(text, product, keywords, hint)}],
+        messages=[{"role": "user", "content": build_user_prompt(text, product, keywords, sponsored, hint)}],
     )
     return "".join(block.text for block in response.content if block.type == "text")
 
@@ -201,6 +227,10 @@ def main() -> None:
     parser.add_argument("input", nargs="?", help="참고할 원고/예시글 텍스트 파일 경로 (생략 시 표준입력)")
     parser.add_argument("-p", "--product", help="제품명 (구매 유도 대상 제품)")
     parser.add_argument("-k", "--keywords", help="본문에 녹이고 싶은 핵심 키워드 (쉼표로 구분)")
+    parser.add_argument(
+        "--sponsored", action="store_true",
+        help="협찬/제공받은 제품 홍보 글일 경우 지정 (공정위 표시광고 규정에 따른 협찬 표시 문구 삽입)",
+    )
     parser.add_argument("-o", "--output", help="결과를 저장할 파일 경로 (생략 시 화면에 출력)")
     parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"사용할 모델 (기본값: {DEFAULT_MODEL})")
     parser.add_argument("-t", "--temperature", type=float, default=1.0, help="창의성 정도 0.0~1.0 (기본값: 1.0)")
@@ -210,7 +240,7 @@ def main() -> None:
     if not text:
         sys.exit("원고 내용이 비어 있습니다.")
 
-    result = adapt_text(text, args.product, args.keywords, args.model, args.temperature)
+    result = adapt_text(text, args.product, args.keywords, args.sponsored, args.model, args.temperature)
     validate_output(result)
 
     if args.output:
