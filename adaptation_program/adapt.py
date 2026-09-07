@@ -17,7 +17,9 @@ except ImportError:
 
 DEFAULT_MODEL = "claude-sonnet-5"
 BODY_CHAR_LIMIT = 2000
-BODY_DELIMITER = "=====참고용 정보 (게시글 본문 아님)====="
+REVIEW_SECTION_CHAR_TARGET = 1000
+TOC_MARK = "목차"
+TITLE_CANDIDATES_HEADER = "[네이버 AI 브리핑 & 메인 노출 최적화 CTR 추천 제목 20개]"
 
 # 매 실행마다 다른 접근을 유도해 항상 같은 글이 나오지 않도록 하는 변주 힌트
 VARIATION_HINTS = [
@@ -83,9 +85,10 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
 - 성분 함량이나 화학 부형제에 대한 과장된 품질 주장은 하지 않고, 객관적 사실 위주로 서술합니다.
 - 네이버에서 불법 콘텐츠/과대광고로 제재될 수 있는 표현(부작용 없음 단정, 100% 효과 단정 등)은
   절대 사용하지 않습니다.
-- 본문 마지막에는 반드시 아래와 같은 취지의 법적 고지문을 포함합니다(문구는 자연스럽게 다듬어도 됨):
-  "본 게시물은 개인적인 사용 경험을 바탕으로 작성되었으며, 특정 질병의 예방·치료 효과를 의미하지
-  않습니다. 제품의 효과는 개인차가 있을 수 있으며, 구매 및 섭취/사용 전 제품 설명서를 확인하시고
+- 아래 "구조 및 포맷"에 정의된 위치(면책문구, `※` 로 시작하는 2~3줄)에 반드시 법적 고지 취지를
+  포함합니다(문구는 자연스럽게 다듬어도 됨): "본 게시물은 개인적인 사용 경험을 바탕으로 작성한
+  정보성 콘텐츠이며, 의약품이 아니고 특정 질병의 예방·치료 효과를 의미하지 않습니다. 성분/원리
+  설명은 특정 제품의 효능이 아닌 원료·제형 자체의 일반적 특성이며, 개인차가 있을 수 있으니
   필요시 전문가와 상담하시기 바랍니다."
 
 ## 키워드 적합성 (네이버 인플루언서 검색 반영도 핵심 — 절대 규칙)
@@ -119,34 +122,59 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
   "이 글은 업체로부터 제품을 제공받아 직접 사용해보고 작성했습니다" 같은 명확한 국문 문구로
   표시합니다. 사용자가 협찬/제공 여부를 알려주지 않으면 이 문구는 넣지 않습니다.
 
-## 구조 및 포맷 (네이버 모바일 최적화)
-- 전체 출력은 두 부분으로 나눕니다: (1) 그대로 복사해서 게시할 수 있는 "본문",
-  (2) "{BODY_DELIMITER}" 구분선 아래에 오는 참고용 SEO 정보.
-- 본문 구성 순서(모두 필수, 하나도 빠뜨리지 않습니다):
-  1. 제목
-  2. `"목차"` — 인용구 소제목 한 줄 그대로 표기 후, 본문의 소제목들을 간단히 나열
-  3. 본문 내용 — 각 소제목은 반드시 큰따옴표 인용구 형태로 "이렇게" 표기
-  4. `"요약"` — 인용구 소제목 한 줄 그대로 표기 후, 본문 내용을 바탕으로 한 핵심 정리
-  5. 법적 고지문 — 반드시 "법적 고지:"라는 문구로 시작하는 문단
-  6. #해시태그 — 본문 하단 해시태그는 핵심 키워드를 바탕으로 창의적으로 뽑은 4~5개만 사용
+## 구조 및 포맷 (네이버 모바일 최적화 — 아래 순서와 헤더 표기를 매번 정확히 지킵니다)
+전체 출력은 아래 순서로 하나의 문서로 작성합니다. 8번(제목 후보 20개) 이전까지가 네이버
+블로그에 그대로 복사해서 게시하는 "본문"이고, 8번부터는 게시글에 넣지 않는 참고용 정보입니다.
+
+1. 도입부 — 계절감/일상 장면에서 자연스럽게 시작해 고민·문제의식으로 이어지는 3~4개 문단.
+   소제목 없이 바로 시작합니다. (제목은 본문에 쓰지 않습니다 — 8번 제목 후보 중 하나를
+   골라 네이버 에디터의 별도 제목란에 입력하는 방식이므로 본문 텍스트에는 포함하지 않습니다.)
+2. `[목차]` — 대괄호 헤더 한 줄, 그 아래 번호를 매긴 소제목 5개 내외 나열. 소제목 문구는
+   매번 새롭게 창작하되, 순서는 항상 다음 서사 흐름을 따릅니다:
+   ① 대상·계기(누구와 함께/어떤 상황에서 시작하게 됐는지) → ② 정의·개념 설명
+   → ③ 성분·수치 등 객관적 팩트 → ④ 방치하면 안 되는 이유(문제 제기)
+   → ⑤ 실제 사용·섭취 후기로 마무리.
+3. 본문 — 목차와 정확히 같은 순서로, 각 섹션은 큰따옴표 인용구 소제목 "이렇게" 표기 후
+   빈 줄, 짧은 줄바꿈 문단들로 구성합니다.
+   - ①~④ 섹션은 담백하고 간결하게 씁니다.
+   - ⑤ 마지막 "실제 사용·섭취 후기" 섹션은 특히 풍성하게 씁니다. 형식적으로 짧게 끝내지
+     말고, 위 "블로거 배경 설정"의 페르소나 디테일(운동 루틴, 무역회사 일상, 식습관 등 그
+     글 주제와 맞는 부분)을 실제로 겪은 일처럼 구체적으로 녹여 진짜 섭취·사용 후기
+     느낌으로 공백 포함 약 {REVIEW_SECTION_CHAR_TARGET}자 내외 분량으로 작성합니다
+     (다른 섹션보다 확연히 길고 구체적이어야 합니다).
+4. `---` 구분선
+5. `[AI 브리핑 요약데이터 목차]` — 대괄호 헤더, 그 아래
+   1. 핵심 요약: 본문 내용을 압축한 한두 문장
+   2. 주요 포인트 목차 & 핵심 데이터: 하위 항목 `1)` `2)` `3)` 형태로 핵심 데이터 나열
+   3. 실천 가이드: 짧은 실행 안내 한두 문장
+6. 면책문구 — `※`로 시작하는 문장 2~3줄. 반드시 다음을 모두 포함합니다: 의약품이 아니며
+   특정 질병의 예방·치료 효과를 의미하지 않는다는 것, 성분/원리 설명은 특정 제품의 효능이
+   아닌 원료·제형 자체의 일반적 특성이라는 것, 개인차가 있으니 필요시 전문가와 상담하라는 것.
+7. `[네이버 AI 브리핑 최적화 연관 해시태그]` — 대괄호 헤더, 그 아래 핵심 키워드 기반
+   해시태그 8~10개를 한 줄로 나열.
+
+여기까지가 게시용 "본문"입니다. 아래는 참고용 정보(게시글에 포함하지 않음)입니다.
+
+8. `{TITLE_CANDIDATES_HEADER}` — 대괄호 헤더, 그 아래 키워드를 포함한 후킹력 있는 제목
+   20개를 번호를 매겨 나열합니다 (사용자가 이 중 하나를 골라 위 본문의 제목으로 사용).
+9. `---` 구분선
+10. `[부록: SEO · AEO · GEO 통합 메타데이터 분석]` — 대괄호 헤더, 그 아래
+    1. SEO 분석: 핵심 키워드 및 본문 분산 설명, LSI 연관 키워드 목록
+    2. AEO 답변 스냅샷: AI 즉답 요약 한 문장, 핵심 Q&A 2개(질문+답변)
+    3. GEO 인용 블록: AI가 그대로 인용하기 좋은 팩트 문장 2개
+
+## 줄바꿈/글자 수 규칙
 - 한 줄은 공백 포함 14~22자 내외로 끊어서 줄바꿈하고, 한 문단은 4~6줄로 구성해서
   네이버 모바일 화면과 감성 블로그 특유의 리듬감 있는 줄바꿈을 만듭니다. 문단 사이는 한 줄 띄웁니다.
   (가운데 정렬은 네이버 에디터에서 사용자가 직접 적용하는 것이므로 텍스트 자체는 좌측 정렬로 출력합니다.)
-- 글자 수 규칙: "목차"와 "요약" 두 섹션(소제목 줄 포함)은 {BODY_CHAR_LIMIT}자 제한에 포함되지
-  않습니다. 그러니 글자 수를 아끼려고 목차나 요약을 대충 쓰지 말고 충분히 성실하게 작성하세요.
-  그 외 나머지 본문(제목, 본문 내용, 법적 고지문, 해시태그)의 글자 수 합계는 공백 포함
-  {BODY_CHAR_LIMIT}자를 넘지 않습니다. 참고용 SEO 정보(구분선 아래)는 애초에 글자 수 제한과 무관합니다.
-- 목차, 요약, 그리고 아래 참고용 정보의 "제목 후보 20개"는 매번 반드시 빠짐없이 전부 포함합니다.
+- `[목차]`와 `[AI 브리핑 요약데이터 목차]` 두 섹션(헤더 줄 포함)은 {BODY_CHAR_LIMIT}자 제한에
+  포함되지 않습니다. 그러니 글자 수를 아끼려고 이 두 섹션을 대충 쓰지 말고 충분히 성실하게
+  작성하세요. 그 외 게시용 본문(도입부, 본문 내용, 면책문구, 해시태그)의 글자 수 합계는
+  공백 포함 {BODY_CHAR_LIMIT}자를 넘지 않습니다. 8번 이후 참고용 정보는 글자 수 제한과 무관합니다.
+- `[목차]`, `[AI 브리핑 요약데이터 목차]`, 면책문구, `{TITLE_CANDIDATES_HEADER}`,
+  `[부록: SEO · AEO · GEO 통합 메타데이터 분석]`은 매번 반드시 빠짐없이 전부 포함합니다.
 - SEO(네이버 C-Rank·D.I.A+, 구글), AEO(질문-답변 구조로 독자가 궁금해할 점에 바로 답하기),
   GEO(AI가 인용하기 좋도록 문단을 명확한 소제목과 핵심 문장 단위로 구조화하기) 원칙을 모두 적용합니다.
-
-## 구분선 아래 참고용 정보 (본문 글자 수에 포함하지 않음)
-"{BODY_DELIMITER}" 아래에는 다음을 포함합니다.
-1. 연관 키워드: 본문 문맥에 자연스럽게 녹인 핵심 키워드 목록과, 함께 노출하면 좋은 연관 키워드 목록.
-2. 참고자료/출처: 정보성 서술에 사용한 출처 목록 (효능·증상 관련 언급이 있었다면 필수).
-3. 클릭률(CTR) 높은 제목 후보 20개: 네이버 AI 브리핑·메인 노출에 유리하도록 키워드를 포함한
-   후킹력 있는 제목 20개를 번호를 매겨 나열.
-4. 추천 해시태그: 네이버 AI 브리핑 노출에 유리한 연관 해시태그 목록 (본문 해시태그와 중복 가능).
 
 ## 원칙 (가장 중요)
 - 이 글의 핵심 목표는 네이버 메인 홈판·AI 브리핑에 상위 노출되는 것입니다. SEO(C-Rank·D.I.A+),
@@ -200,38 +228,40 @@ def adapt_text(
 
 
 def _strip_excluded_sections(body: str) -> str:
-    """글자 수 제한에서 제외되는 "목차"/"요약" 섹션을 제거한 본문을 반환한다."""
+    """글자 수 제한에서 제외되는 [목차]/[AI 브리핑 요약데이터 목차] 섹션을 제거한 본문을 반환한다."""
     lines = body.split("\n")
+    bracket_header = re.compile(r'^\s*\[(.+)\]\s*$')
     quoted_subtitle = re.compile(r'^\s*"(.+)"\s*$')
     keep = []
     skipping = False
     for line in lines:
-        m = quoted_subtitle.match(line)
-        if m:
-            title = m.group(1).strip()
-            if title in ("목차", "요약"):
-                skipping = True
+        stripped_line = line.strip()
+        bm = bracket_header.match(line)
+        is_boundary = bool(bm) or bool(quoted_subtitle.match(line)) or stripped_line.startswith("※") or re.match(r'^-{3,}$', stripped_line)
+        if is_boundary:
+            skipping = bool(bm and TOC_MARK in bm.group(1))
+            if skipping:
                 continue
-            skipping = False
-        elif skipping and line.strip().startswith("법적 고지"):
-            skipping = False
         if not skipping:
             keep.append(line)
     return "\n".join(keep)
 
 
 def validate_output(result: str, keywords: str | None = None) -> None:
-    raw_body = result.split(BODY_DELIMITER)[0]
+    raw_body = result.split(TITLE_CANDIDATES_HEADER)[0]
     body = _strip_excluded_sections(raw_body)
     body_len = len(body.replace("\n", ""))
     if body_len > BODY_CHAR_LIMIT:
-        print(f"[경고] 본문 글자 수가 {body_len}자로 제한({BODY_CHAR_LIMIT}자, 목차/요약 제외)을 초과했습니다. 검수 후 축약해주세요.", file=sys.stderr)
-    for required in ('"목차"', '"요약"'):
+        print(f"[경고] 본문 글자 수가 {body_len}자로 제한({BODY_CHAR_LIMIT}자, 목차/AI브리핑 요약데이터 제외)을 초과했습니다. 검수 후 축약해주세요.", file=sys.stderr)
+    for required in ("[목차]", "[AI 브리핑 요약데이터 목차]"):
         if required not in raw_body:
             print(f"[경고] {required} 섹션이 결과에 없습니다. 확인해주세요.", file=sys.stderr)
-    reference_section = result.split(BODY_DELIMITER, 1)[-1] if BODY_DELIMITER in result else ""
-    if "제목 후보" not in reference_section:
-        print("[경고] 제목 후보 20개 섹션이 결과에 없습니다. 확인해주세요.", file=sys.stderr)
+    if TITLE_CANDIDATES_HEADER not in result:
+        print(f"[경고] {TITLE_CANDIDATES_HEADER} 섹션이 결과에 없습니다. 확인해주세요.", file=sys.stderr)
+    else:
+        reference_section = result.split(TITLE_CANDIDATES_HEADER, 1)[-1]
+        if "[부록" not in reference_section:
+            print("[경고] SEO·AEO·GEO 메타데이터 부록 섹션이 결과에 없습니다. 확인해주세요.", file=sys.stderr)
 
     if keywords:
         for kw in (k.strip() for k in keywords.split(",") if k.strip()):
@@ -241,7 +271,9 @@ def validate_output(result: str, keywords: str | None = None) -> None:
             elif count == 1:
                 print(f"[경고] 키워드 '{kw}'가 본문에 1번만 언급되어 충분히 다뤄지지 않았을 수 있습니다. 확인해주세요.", file=sys.stderr)
 
-    hits = [p for p in FORBIDDEN_PATTERNS if re.search(p, raw_body)]
+    # 면책문구(※ 줄)는 규정을 부정하는 안전 문구이므로 금지 표현 검사에서 제외한다
+    scan_target = "\n".join(line for line in raw_body.split("\n") if not line.strip().startswith("※"))
+    hits = [p for p in FORBIDDEN_PATTERNS if re.search(p, scan_target)]
     if hits:
         print(
             "[경고] 의약품 오인/과대광고 소지가 있는 표현이 감지되었습니다. "
