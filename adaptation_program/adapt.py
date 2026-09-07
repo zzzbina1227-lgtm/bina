@@ -50,13 +50,12 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
   그대로 베끼지 않고 표현을 완전히 새로 씁니다.
 - "제품 필수 가이드": 특허, 원료명/브랜드명, 성분 리스트와 함량, 기능성 문구, 포장 형태 등
   제품에 대한 모든 구체적 사실은 반드시 이 가이드에 실제로 적힌 내용에서만 가져옵니다.
-  가이드에 없는 수치·성분·기능성·인증·특허 내용을 임의로 만들어내거나 추측해서 채우지
-  않습니다. 가이드에 있는 표현(예: "17종 비타민 미네랄 100%*", "국내 2종 특허",
-  "LIPOPRIME", "23중 기능성")은 각주(*1일 영양성분기준치 대비 등)까지 포함해 정확하게
-  반영합니다.
-- 제품 필수 가이드가 제공되지 않았다면, 구체적인 수치·성분명·특허·인증 내용을 확정적으로
-  서술하지 않습니다. 이런 경우 "제품 표시사항을 확인해보시길 권해요" 같은 조건부 표현으로
-  대신하고, 검증되지 않은 사실을 지어내지 않습니다.
+  이 가이드는 매번 필수로 함께 제공되며, 가이드에 없는 수치·성분·기능성·인증·특허 내용을
+  임의로 만들어내거나 추측해서 채우지 않습니다. 가이드에 있는 표현(예: "17종 비타민
+  미네랄 100%*", "국내 2종 특허", "LIPOPRIME", "23중 기능성")은 각주(*1일 영양성분기준치
+  대비 등)까지 포함해 정확하게 반영합니다.
+- 가이드에 나온 사실이라도 본문 표현으로 옮길 때 "법적 준수" 규칙(의약품 오인 표현 금지,
+  식약처 인정 범위 내 조건부 서술 등)을 벗어나지 않도록 문구를 다듬습니다.
 
 ## 블로거 배경 설정 (이 글을 쓰는 화자의 실제 캐릭터)
 글을 쓰는 화자는 아래 배경을 가진 실존 인물입니다. 이 정보를 매 글마다 전부 나열하지 말고,
@@ -333,8 +332,8 @@ def main() -> None:
     )
     parser.add_argument("input", nargs="?", help="참고할 원고/예시글 텍스트 파일 경로 (생략 시 표준입력, 문체·구성만 참고)")
     parser.add_argument(
-        "-g", "--guide",
-        help="제품 필수 가이드 파일 경로 (특허/성분/함량/기능성 등 제품 사실 정보의 유일한 근거)",
+        "-g", "--guide", required=True,
+        help="[필수] 제품 필수 가이드 파일 경로 (특허/성분/함량/기능성 등 제품 사실 정보의 유일한 근거)",
     )
     parser.add_argument("-p", "--product", help="제품명 (구매 유도 대상 제품)")
     parser.add_argument("-k", "--keywords", help="본문에 녹이고 싶은 핵심 키워드 (쉼표로 구분)")
@@ -351,10 +350,10 @@ def main() -> None:
     if not text:
         sys.exit("원고 내용이 비어 있습니다.")
 
-    guide = None
-    if args.guide:
-        with open(args.guide, "r", encoding="utf-8") as f:
-            guide = f.read().strip()
+    with open(args.guide, "r", encoding="utf-8") as f:
+        guide = f.read().strip()
+    if not guide:
+        sys.exit("제품 필수 가이드 파일이 비어 있습니다.")
 
     result = adapt_text(text, guide, args.product, args.keywords, args.sponsored, args.model, args.temperature)
     validate_output(result, args.keywords)
