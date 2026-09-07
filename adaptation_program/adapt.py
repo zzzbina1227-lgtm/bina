@@ -41,8 +41,22 @@ FORBIDDEN_PATTERNS = [
 ]
 
 SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO/GEO 콘텐츠 전략가입니다.
-사용자가 제공하는 원고(또는 예시글, 제품 정보)를 참고하되, 그대로 베끼지 않고
+사용자가 제공하는 원고(또는 예시글)를 문체·구성의 참고 자료로 삼되, 그대로 베끼지 않고
 완전히 새롭고 독창적인 글로 재창작(각색)합니다.
+
+## 제품 사실 정보 출처 규칙 (절대 규칙 — 예외 없음)
+사용자가 입력하는 자료는 역할이 다른 두 가지입니다. 절대 섞어서 쓰지 않습니다.
+- "참고 원고/예시글": 문체·구성·분위기만 참고하는 스타일 참고자료입니다. 여기 담긴 문장을
+  그대로 베끼지 않고 표현을 완전히 새로 씁니다.
+- "제품 필수 가이드": 특허, 원료명/브랜드명, 성분 리스트와 함량, 기능성 문구, 포장 형태 등
+  제품에 대한 모든 구체적 사실은 반드시 이 가이드에 실제로 적힌 내용에서만 가져옵니다.
+  가이드에 없는 수치·성분·기능성·인증·특허 내용을 임의로 만들어내거나 추측해서 채우지
+  않습니다. 가이드에 있는 표현(예: "17종 비타민 미네랄 100%*", "국내 2종 특허",
+  "LIPOPRIME", "23중 기능성")은 각주(*1일 영양성분기준치 대비 등)까지 포함해 정확하게
+  반영합니다.
+- 제품 필수 가이드가 제공되지 않았다면, 구체적인 수치·성분명·특허·인증 내용을 확정적으로
+  서술하지 않습니다. 이런 경우 "제품 표시사항을 확인해보시길 권해요" 같은 조건부 표현으로
+  대신하고, 검증되지 않은 사실을 지어내지 않습니다.
 
 ## 블로거 배경 설정 (이 글을 쓰는 화자의 실제 캐릭터)
 글을 쓰는 화자는 아래 배경을 가진 실존 인물입니다. 이 정보를 매 글마다 전부 나열하지 말고,
@@ -192,8 +206,17 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
 - 결과물은 바로 게시 가능한 완성도로 작성하고, 위 형식과 순서를 반드시 지킵니다."""
 
 
-def build_user_prompt(text: str, product: str | None, keywords: str | None, sponsored: bool, hint: str) -> str:
-    parts = [f"--- 참고 원고/예시글 ---\n{text}\n--- 참고 원고 끝 ---"]
+def build_user_prompt(
+    text: str, guide: str | None, product: str | None, keywords: str | None, sponsored: bool, hint: str
+) -> str:
+    parts = [f"--- 참고 원고/예시글 (문체·구성만 참고, 사실 근거 아님) ---\n{text}\n--- 참고 원고 끝 ---"]
+    if guide:
+        parts.append(
+            f"--- 제품 필수 가이드 (모든 제품 사실 정보의 유일한 근거) ---\n{guide}\n"
+            "--- 제품 필수 가이드 끝 ---\n"
+            "위 가이드에 실제로 적힌 수치·성분·특허·기능성·포장 정보만 사용하고, "
+            "가이드에 없는 내용은 지어내지 마세요."
+        )
     if product:
         parts.append(f"제품명: {product}")
     if keywords:
@@ -212,7 +235,13 @@ def build_user_prompt(text: str, product: str | None, keywords: str | None, spon
 
 
 def adapt_text(
-    text: str, product: str | None, keywords: str | None, sponsored: bool, model: str, temperature: float
+    text: str,
+    guide: str | None,
+    product: str | None,
+    keywords: str | None,
+    sponsored: bool,
+    model: str,
+    temperature: float,
 ) -> str:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -228,7 +257,7 @@ def adapt_text(
         max_tokens=4096,
         temperature=temperature,
         system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": build_user_prompt(text, product, keywords, sponsored, hint)}],
+        messages=[{"role": "user", "content": build_user_prompt(text, guide, product, keywords, sponsored, hint)}],
     )
     return "".join(block.text for block in response.content if block.type == "text")
 
@@ -302,7 +331,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="네이버 블로그 원고를 SEO/AEO/GEO 최적화된 신뢰도 높은 글로 각색합니다."
     )
-    parser.add_argument("input", nargs="?", help="참고할 원고/예시글 텍스트 파일 경로 (생략 시 표준입력)")
+    parser.add_argument("input", nargs="?", help="참고할 원고/예시글 텍스트 파일 경로 (생략 시 표준입력, 문체·구성만 참고)")
+    parser.add_argument(
+        "-g", "--guide",
+        help="제품 필수 가이드 파일 경로 (특허/성분/함량/기능성 등 제품 사실 정보의 유일한 근거)",
+    )
     parser.add_argument("-p", "--product", help="제품명 (구매 유도 대상 제품)")
     parser.add_argument("-k", "--keywords", help="본문에 녹이고 싶은 핵심 키워드 (쉼표로 구분)")
     parser.add_argument(
@@ -318,7 +351,12 @@ def main() -> None:
     if not text:
         sys.exit("원고 내용이 비어 있습니다.")
 
-    result = adapt_text(text, args.product, args.keywords, args.sponsored, args.model, args.temperature)
+    guide = None
+    if args.guide:
+        with open(args.guide, "r", encoding="utf-8") as f:
+            guide = f.read().strip()
+
+    result = adapt_text(text, guide, args.product, args.keywords, args.sponsored, args.model, args.temperature)
     validate_output(result, args.keywords)
 
     if args.output:
