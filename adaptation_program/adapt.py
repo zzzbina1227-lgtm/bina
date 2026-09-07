@@ -74,13 +74,21 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
 ## 구조 및 포맷 (네이버 모바일 최적화)
 - 전체 출력은 두 부분으로 나눕니다: (1) 그대로 복사해서 게시할 수 있는 "본문",
   (2) "{BODY_DELIMITER}" 구분선 아래에 오는 참고용 SEO 정보.
-- 본문 구성 순서: 제목, 목차(간단한 소제목 나열), 본문 내용(소제목은 반드시 큰따옴표
-  인용구 형태로 "이렇게" 표기), 마지막 요약(본문 내용을 바탕으로 한 짧은 정리),
-  법적 고지문, #해시태그.
+- 본문 구성 순서(모두 필수, 하나도 빠뜨리지 않습니다):
+  1. 제목
+  2. `"목차"` — 인용구 소제목 한 줄 그대로 표기 후, 본문의 소제목들을 간단히 나열
+  3. 본문 내용 — 각 소제목은 반드시 큰따옴표 인용구 형태로 "이렇게" 표기
+  4. `"요약"` — 인용구 소제목 한 줄 그대로 표기 후, 본문 내용을 바탕으로 한 핵심 정리
+  5. 법적 고지문 — 반드시 "법적 고지:"라는 문구로 시작하는 문단
+  6. #해시태그 — 본문 하단 해시태그는 핵심 키워드를 바탕으로 창의적으로 뽑은 4~5개만 사용
 - 한 줄은 공백 포함 14~22자 내외로 끊어서 줄바꿈하고, 한 문단은 4~6줄로 구성해서
   네이버 모바일 화면과 감성 블로그 특유의 리듬감 있는 줄바꿈을 만듭니다. 문단 사이는 한 줄 띄웁니다.
   (가운데 정렬은 네이버 에디터에서 사용자가 직접 적용하는 것이므로 텍스트 자체는 좌측 정렬로 출력합니다.)
-- 본문(고지문·해시태그 포함, 참고용 SEO 정보 제외) 전체 글자 수는 공백 포함 {BODY_CHAR_LIMIT}자를 넘지 않습니다.
+- 글자 수 규칙: "목차"와 "요약" 두 섹션(소제목 줄 포함)은 {BODY_CHAR_LIMIT}자 제한에 포함되지
+  않습니다. 그러니 글자 수를 아끼려고 목차나 요약을 대충 쓰지 말고 충분히 성실하게 작성하세요.
+  그 외 나머지 본문(제목, 본문 내용, 법적 고지문, 해시태그)의 글자 수 합계는 공백 포함
+  {BODY_CHAR_LIMIT}자를 넘지 않습니다. 참고용 SEO 정보(구분선 아래)는 애초에 글자 수 제한과 무관합니다.
+- 목차, 요약, 그리고 아래 참고용 정보의 "제목 후보 20개"는 매번 반드시 빠짐없이 전부 포함합니다.
 - SEO(네이버 C-Rank·D.I.A+, 구글), AEO(질문-답변 구조로 독자가 궁금해할 점에 바로 답하기),
   GEO(AI가 인용하기 좋도록 문단을 명확한 소제목과 핵심 문장 단위로 구조화하기) 원칙을 모두 적용합니다.
 
@@ -92,9 +100,13 @@ SYSTEM_PROMPT = f"""당신은 네이버 블로그 전문 에디터이자 SEO/AEO
    후킹력 있는 제목 20개를 번호를 매겨 나열.
 4. 추천 해시태그: 네이버 AI 브리핑 노출에 유리한 연관 해시태그 목록 (본문 해시태그와 중복 가능).
 
-## 원칙
-- 매 실행마다 이전과 다른 도입부, 다른 문장 구조, 다른 소제목 표현을 사용해 절대 같은 글이
-  나오지 않도록 합니다.
+## 원칙 (가장 중요)
+- 이 글의 핵심 목표는 네이버 메인 홈판·AI 브리핑에 상위 노출되는 것입니다. SEO(C-Rank·D.I.A+),
+  AEO(질문-답변 구조), GEO(AI 인용 최적화) 원칙을 모든 문단에 실제로 적용해서 작성합니다.
+- 절대로 이전 실행과 같거나 비슷한 글이 나오면 안 됩니다. 매 실행마다 도입부, 문장 구조,
+  전개 순서를 다르게 씁니다.
+- 소제목 인용구("...") 문구도 매번 완전히 새롭게 창작합니다. 이전에 썼을 법한 뻔한 소제목
+  (예: "제품 소개", "사용 후기")을 피하고, 키워드를 살려 창의적이고 후킹력 있는 소제목을 만듭니다.
 - 결과물은 바로 게시 가능한 완성도로 작성하고, 위 형식과 순서를 반드시 지킵니다."""
 
 
@@ -129,13 +141,41 @@ def adapt_text(text: str, product: str | None, keywords: str | None, model: str,
     return "".join(block.text for block in response.content if block.type == "text")
 
 
+def _strip_excluded_sections(body: str) -> str:
+    """글자 수 제한에서 제외되는 "목차"/"요약" 섹션을 제거한 본문을 반환한다."""
+    lines = body.split("\n")
+    quoted_subtitle = re.compile(r'^\s*"(.+)"\s*$')
+    keep = []
+    skipping = False
+    for line in lines:
+        m = quoted_subtitle.match(line)
+        if m:
+            title = m.group(1).strip()
+            if title in ("목차", "요약"):
+                skipping = True
+                continue
+            skipping = False
+        elif skipping and line.strip().startswith("법적 고지"):
+            skipping = False
+        if not skipping:
+            keep.append(line)
+    return "\n".join(keep)
+
+
 def validate_output(result: str) -> None:
-    body = result.split(BODY_DELIMITER)[0]
+    raw_body = result.split(BODY_DELIMITER)[0]
+    body = _strip_excluded_sections(raw_body)
     body_len = len(body.replace("\n", ""))
     if body_len > BODY_CHAR_LIMIT:
-        print(f"[경고] 본문 글자 수가 {body_len}자로 제한({BODY_CHAR_LIMIT}자)을 초과했습니다. 검수 후 축약해주세요.", file=sys.stderr)
+        print(f"[경고] 본문 글자 수가 {body_len}자로 제한({BODY_CHAR_LIMIT}자, 목차/요약 제외)을 초과했습니다. 검수 후 축약해주세요.", file=sys.stderr)
+    for required in ('"목차"', '"요약"'):
+        if required not in raw_body:
+            print(f"[경고] {required} 섹션이 결과에 없습니다. 확인해주세요.", file=sys.stderr)
+    reference_section = result.split(BODY_DELIMITER, 1)[-1] if BODY_DELIMITER in result else ""
+    if "제목 후보" not in reference_section:
+        print("[경고] 제목 후보 20개 섹션이 결과에 없습니다. 확인해주세요.", file=sys.stderr)
 
-    hits = [p for p in FORBIDDEN_PATTERNS if re.search(p, body)]
+    hits = [p for p in FORBIDDEN_PATTERNS if re.search(p, raw_body)]
     if hits:
         print(
             "[경고] 의약품 오인/과대광고 소지가 있는 표현이 감지되었습니다. "
